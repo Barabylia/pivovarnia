@@ -4,8 +4,11 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h> // Библиотека для OTA-прошивки
 #include <PubSubClient.h>
-#include "DHT.h"
+#include <DHT.h>
 #include <max6675.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
 
 // Wi-fi connection
 IPAddress ip(192,168,31,110); 
@@ -23,45 +26,64 @@ PubSubClient client(espClient);
 // specify the port to listen on as an argument
 WiFiServer server(80);
 
+/****** DS18B20 Temperature *******/
+DeviceAddress Term01 = { 0x28, 0xFF, 0x74, 0x6E, 0xB0, 0x16, 0x4, 0x24 }; //black
+DeviceAddress Term02   = { 0x28, 0xFF, 0x4D, 0x2F, 0xB0, 0x16, 0x5, 0x62 }; //red
+DeviceAddress Term03   = { 0x28, 0xFF, 0xB9, 0x7F, 0xB0, 0x16, 0x4, 0x5D }; //green
+
+// Data wire is plugged into port 2 on the Arduino
+#define ONE_WIRE_BUS D2
+//#define TEMPERATURE_PRECISION 9
+
+// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+OneWire oneWire(ONE_WIRE_BUS);
+
+// Pass our oneWire reference to Dallas Temperature.
+DallasTemperature sensors(&oneWire);
+
+/****** Buttons + Relays *******/
+#define BUTTON_PIN D4       // 
+#define LED_PIN D5       // 
+int relay1=0;
+int relay2=0;
+int relay3=0;
+int counter=0;
+
 
 
 
 /*
-#define DHT1PIN D4     // DHT22 1 data what digital pin we're connected to
-#define DHT2PIN D6     // DHT22 2 data what digital pin we're connected to
-#define DHTTYPE DHT22  // DHT 22  (AM2302), AM2321
-
-DHT dht1(DHT1PIN, DHTTYPE);
-DHT dht2(DHT2PIN, DHTTYPE);
-*/
-
-
 // TERMO #1
 #define thermoDO1 D2       // SO
 #define thermoCS1 D3       // CS
 #define thermoCLK1 D4      // SCK
 // TERMO #2
-#define thermoDO2 D5       // SO
-#define thermoCS2 D6       // CS
-#define thermoCLK2 D7      // SCK
+#define thermoDO2 D6       // SO
+#define thermoCS2 D7       // CS
+#define thermoCLK2 D8      // SCK
 
 MAX6675 thermocouple1(thermoCLK1, thermoCS1, thermoDO1);
-MAX6675 thermocouple2(thermoCLK2, thermoCS2, thermoDO2);
-
-
+//MAX6675 thermocouple2(thermoCLK2, thermoCS2, thermoDO2);
+*/
+int my_MAX6675 = 0;
+int my_DHT22 = 0;
+int my_DS18B20 = 1;
 
 void setup() {
+  
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  digitalWrite(BUTTON_PIN, HIGH);
 
 
-/*
-  dht1.begin();
-  dht2.begin();
-*/
+
 int my_test = 0;
+
+
   String my_ip; 
   String my_name;
 if (my_test == 0) {my_ip = 110; my_name = "110";} else {my_ip = 153; my_name = "L293D";}
-  String sketch_name = "NodeMcu_OTA_110_no_MQTT\"";
+  String sketch_name = "110_NodeMcu_OTA_no_MQTT\"";
 
   
   Serial.begin(115200);
@@ -114,6 +136,12 @@ upload_port = 192.168.31.110
      client.setServer(mqtt_server, 1883);
      client.setCallback(callback);
      */
+
+      // locate devices on the bus
+  Serial.print("Locating devices...");
+  Serial.print("Found ");
+  Serial.print(sensors.getDeviceCount(), DEC);
+  Serial.println(" devices.");
 }
 /*
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -186,17 +214,67 @@ ArduinoOTA.handle(); // Всегда готовы к прошивке
   client.loop();
  */ 
 
+/****** Buttons + Relays *******/
+
+if(!digitalRead(BUTTON_PIN) == HIGH && relay1 == 0)
+{
+  digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+  relay1 = 1;
+  delay(1000);
+}
+
+if(!digitalRead(BUTTON_PIN) == LOW && relay1 == 1)
+{
+  relay1 = 0;
+  counter = counter+1;
+  //Serial.println("relay1 = " + String(relay1));
+Serial.println("counter = " + String(counter));
+}
+
+
+
+
+
+/****** DS18B20 *******/
+if (my_DS18B20 == 1) {
+  sensors.requestTemperatures();
+
+  
+   Serial.print("Term01 C: ");
+  float tempC1 = sensors.getTempC(Term01);
+  Serial.print(tempC1);
+  Serial.print(" black");
+  Serial.println();
+  
+  Serial.print("Term02 C: ");
+  float tempC2 = sensors.getTempC(Term02);
+  Serial.print(tempC2);
+  Serial.print(" red");
+  Serial.println();
+
+  Serial.print("Term03 C: ");
+  float tempC3 = sensors.getTempC(Term03);
+  Serial.print(tempC3);
+  Serial.print(" green");
+  Serial.println();
+  
+delay (2000);
+}
+
+
+
 
 
 /****** MAX6675 *******/
+if (my_MAX6675 == 1) {
    Serial.print("1_C = "); 
-   Serial.print(thermocouple1.readCelsius());
+   //Serial.print(thermocouple1.readCelsius());
    Serial.print("   1_F = ");
-   Serial.println(thermocouple1.readFahrenheit());
+   //Serial.println(thermocouple1.readFahrenheit());
  
    // For the MAX6675 to update, you must delay AT LEAST 250ms between reads!
    delay(1000);
-
+}
 
    //Serial.print("     2_C = "); 
    //Serial.println(thermocouple2.readCelsius());
@@ -204,7 +282,7 @@ ArduinoOTA.handle(); // Всегда готовы к прошивке
    //Serial.println(thermocouple2.readFahrenheit());
  
    // For the MAX6675 to update, you must delay AT LEAST 250ms between reads!
-   delay(1000);
+   //delay(1000);
 
 
 
@@ -214,95 +292,7 @@ ArduinoOTA.handle(); // Всегда готовы к прошивке
 
 
 
-/****** TEMP and HUD *******/
-/*
-  float hum1 = dht1.readHumidity();
-  float hum2 = dht2.readHumidity();
 
-  float temp1 = dht1.readTemperature();
-  float temp2 = dht2.readTemperature();
-
-  delay(2500);
-
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(hum1) || isnan(temp1)) {
-    Serial.println("Failed to read from DHT22 1 sensor!");
-    return;
-  }
-  //float screen = hum1;
-  //Serial.println(screen);
-
-
-
- String payload1 =""; payload1 += temp1;
-  char send_mytemp1[8];
-payload1.toCharArray( send_mytemp1, 8 );
-client.publish( "mytemp1", send_mytemp1 );
-Serial.println( send_mytemp1 );
-
- String payload2 =""; payload2 += temp2;
-  char send_mytemp2[8];
-payload2.toCharArray( send_mytemp2, 8 );
-client.publish( "mytemp2", send_mytemp2 );
-Serial.println( send_mytemp2 );
-
-Sendmydata("mytemp1",temp1);
-Sendmydata("mytemp2",temp2);
-
-Sendmydata("hum1",hum1);
-Sendmydata("hum2",hum2);
-
-
-// Prepare a JSON payload string
- String payload = "{";
-payload += "\"temp1\":"; payload += temp1; payload += ",";
-payload += "\"hum1\":"; payload += hum1;
-payload += "\"temp2\":"; payload += temp2; payload += ",";
-payload += "\"hum2\":"; payload += hum2;
-payload += "}";
-
-// Send payload
- char attributes[100];
-payload.toCharArray( attributes, 100 );
-client.publish( "mytemp_all", attributes );
-Serial.println( attributes );
-
-//round()
-
-  // Prepare the response
-  String s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\nTEMPERATURE - HUMIDITY:<br><br>";
-  //s += (val)?"high":"low";
-  //s += "<p><a href=\"/gpio/1\"><button style=\"background: #4CAF50;\">ON</button></a>&nbsp;<a href=\"/gpio/0\"><button style=\"background: #f44336;\">OFF</button></a></p>";
-  //s += "<p>GPIO2 <a href=\"/gpio/0\"><button>100% light</button></a>&nbsp;<a href=\"?pin=50\"><button>50% light</button></a>&nbsp;<a href=\"?pin=10\"><button>10% light</button></a>&nbsp;<a href=\"?pin=OFF2\"><button>OFF</button></a></p>";
-  //s += "</html>\n";
-
-  // Prepare the response
-  //String s1 = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\nGPIO is now ";
-  //s += (val1)?"high":"low";
-  //s += "<p><a href=\"/gpio1/1\"><button style=\"background: #4CAF50;\">ON4</button></a>&nbsp;<a href=\"/gpio1/0\"><button style=\"background: #f44336;\">OFF3</button></a></p>";
-  //s += "<p>GPIO2 <a href=\"/gpio/0\"><button>100% light</button></a>&nbsp;<a href=\"?pin=50\"><button>50% light</button></a>&nbsp;<a href=\"?pin=10\"><button>10% light</button></a>&nbsp;<a href=\"?pin=OFF2\"><button>OFF</button></a></p>";
-  s += (float)temperature; s += " *C - ";
-  s += (float)humidity; s += " RH%";
-  s += "</html>\n";
-*/
-
-String s = "http://192.168.42.1/154.php?temp=21&hum=75";
-/*
-  String s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n{\"TEMP2\": {\"temp\":";
-  s += temp1; s += ",\"hum\":";
-  s += hum1; s += "},\"TEMP3\": {\"temp\":";
-  s += temp2; s += ",\"hum\":";
-  s += hum2; s += "}}";
-
-  //"},\"TEMP3\": {\"temp\":822,\"hum\":13}}";
-
-float aris = 99.25;
-//char msg[50];
-int lastMsg1 = 0;
-*/
-////////////////////////////////
-    //string.toCharArray(s, len)
-    //client.publish("outTopic", temp1);
  
   // Check if a client has connected
   WiFiClient client = server.available();
@@ -321,7 +311,6 @@ int lastMsg1 = 0;
   Serial.println(req);
   client.flush();
   // Send the response to the client
-  client.print(s);
   delay(1);
   Serial.println("Client disonnected");
 
